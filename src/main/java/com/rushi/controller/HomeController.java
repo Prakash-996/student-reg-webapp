@@ -23,6 +23,7 @@ public class HomeController {
     public static List<RegistrationForm> REGISTRATIONS = new ArrayList<>();
 
     public static class RegistrationForm implements Serializable {
+
         @NotEmpty(message = "Name is required")
         private String name;
 
@@ -38,27 +39,50 @@ public class HomeController {
         private String course;
 
         // Getters and Setters
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
 
-        public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
+        public String getName() {
+            return name;
+        }
 
-        public String getPhone() { return phone; }
-        public void setPhone(String phone) { this.phone = phone; }
+        public void setName(String name) {
+            this.name = name;
+        }
 
-        public String getCourse() { return course; }
-        public void setCourse(String course) { this.course = course; }
+        public String getEmail() {
+            return email;
+        }
+
+        public void setEmail(String email) {
+            this.email = email;
+        }
+
+        public String getPhone() {
+            return phone;
+        }
+
+        public void setPhone(String phone) {
+            this.phone = phone;
+        }
+
+        public String getCourse() {
+            return course;
+        }
+
+        public void setCourse(String course) {
+            this.course = course;
+        }
     }
 
     @GetMapping("/")
     public String showForm(Model model, HttpServletRequest request) {
 
         logger.info("Rendering registration form for client IP: {}", request.getRemoteAddr());
+
         model.addAttribute("form", new RegistrationForm());
         model.addAttribute("courses", getCourses());
         model.addAttribute("clientIp", request.getRemoteAddr());
         model.addAttribute("serverIp", request.getLocalAddr());
+
         return "registration";
     }
 
@@ -67,13 +91,15 @@ public class HomeController {
                               BindingResult result,
                               Model model,
                               HttpServletRequest request) {
+
         logger.info("Processing registration for email: {}", form.getEmail());
+
         model.addAttribute("clientIp", request.getRemoteAddr());
         model.addAttribute("serverIp", request.getLocalAddr());
         model.addAttribute("courses", getCourses());
 
         if (result.hasErrors()) {
-            logger.warn("Validation errors found for registration form. Error count: {}", result.getErrorCount());
+            logger.warn("Validation errors found. Error count: {}", result.getErrorCount());
             logger.debug("Validation error details: {}", result.getAllErrors());
             return "registration";
         }
@@ -85,12 +111,21 @@ public class HomeController {
         model.addAttribute("name", form.getName());
         model.addAttribute("emailSent", true);
         model.addAttribute("course", form.getCourse());
+
         REGISTRATIONS.add(form);
+
         logger.info("Registration successful for: {}", form.getName());
+
         return "success";
     }
 
     private List<String> getCourses() {
-        return Arrays.asList("DevOps", "AWS", "Azure Admin With Azure DevOps", "Terraform", "K8s")
+        return Arrays.asList(
+                "DevOps",
+                "AWS",
+                "Azure Admin With Azure DevOps",
+                "Terraform",
+                "K8s"
+        );
     }
 }
