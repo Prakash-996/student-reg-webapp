@@ -1,116 +1,42 @@
-pipeline {
-    
-    agent any
-    
-    triggers {
-       githubPush()
+node {
+    try{
+    def maven_home = tool name: 'Maven3.9.12', type: 'maven'
+    def tomcat_serverid="172.31.43.193"
+   // stage("git clone"){
+   //     git branch: 'development', credentialsId: 'git_hub_credentials', url: 'https://github.com/Prakash-996/student-reg-webapp.git'
+   // }
+    stage("maven package"){
+        sh "${maven_home}/bin/mvn clean package"
     }
-
-    options {
-        buildDiscarder logRotator(numToKeepStr: '5')
-        disableConcurrentBuilds()
-        timeout(time: 10,unit: 'MINUTES')
+    stage("sonarscan"){
+        withCredentials([string(credentialsId: 'sonarqube_token', variable: 'sonartoken')]){
+            sh "${maven_home}/bin/mvn clean verify sonar:sonar -Dsonar.token=${sonartoken}"
+        }
     }
- 
-    environment {
+    stage("upload war file to nexus"){
+        sh "${maven_home}/bin/mvn clean deploy"
+    }
+    stage("upload war file to tomcat"){
+        sshagent(['tomcat_ssh_cred']) {
+              sh"""
+            ssh -o StrictHostKeyChecking=no ec2-user@${tomcat_serverid} sudo systemctl stop tomcat
+            sleep 20
+            ssh -o StrictHostKeyChecking=no ec2-user@${tomcat_serverid} rm /opt/tomcat/webapps/student-reg-webapp.war
+            scp -o StrictHostKeyChecking=no target/student-reg-webapp.war ec2-user@${tomcat_serverid}:/opt/tomcat/webapps/student-reg-webapp.war
+            ssh -o StrictHostKeyChecking=no ec2-user@${tomcat_serverid} sudo systemctl start tomcat
+            """
+}
+   }
+    }catch(Exception e){
+        currentBuild.result ='FAILURE'
+    }finally{
+        def buildstatus = currentBuild.result ?: 'SUCCESS'
+        def colorcode = 'good'
         
-        SONARQUBE_HOST = "http://172.31.8.134:9000"
-        SONARQUBE_TOKEN = credentials('SonarQubeToken')
-        tomcatserverSSHUserName = "ec2-user"
-        tomcatSystemIP = "172.31.19.130"
-        
-    }
- 
-    tools {
-        maven 'Maven-3.9.11'
-    }
-    
-    stages{
-
-        stage("Build Stage"){
-           
-         steps {
-                sh "mvn clean package"
-           }
+        if(buildstatus =='FAILURE'){
+            colorcode='danger'
         }
-     
-        stage("Sonar Scan"){
-            steps {
-                sh "mvn clean verify sonar:sonar -Dsonar.host=${SONARQUBE_HOST} -Dsonar.token=${SONARQUBE_TOKEN}"
-            }
+        //slackSend channel: '#all-rushitech' , color: "${colorcode}" , message :"Jenkins Job ${env.JOB_NAME} - ${env.BUILD_NUMBER} - ${env.buildstatus} - Please check the output ${env.BUILD_URL}"
+        emailext body:"Jenkins Job ${env.JOB_NAME} - ${env.BUILD_NUMBER} - ${env.buildstatus} - Please check the output ${env.BUILD_URL}", subject: '${env.JOB_NAME} - ${env.BUILD_NUMBER} ', to: 'chennuruprakash19@gmail.com'
         }
-     
-        stage("Upload Artificat To Nexus"){
-            steps {
-                sh "mvn clean deploy"
-            }
-        }
-     
-        stage("Deploy War File To Tomcat"){
-            
-            when {
-                expression { env.BRANCH_NAME ==  "development" }
-            }
-
-            steps {
-                sshagent(['TomcatServer_SSH_Credetails']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ${tomcatserverSSHUserName}@${tomcatSystemIP} sudo systemctl stop tomcat
-                        sleep 20
-                        ssh -o StrictHostKeyChecking=no ${tomcatserverSSHUserName}@${tomcatSystemIP} rm /opt/tomcat/webapps/student-reg-webapp.war || true
-                        scp -o StrictHostKeyChecking=no target/student-reg-webapp.war ${tomcatserverSSHUserName}@${tomcatSystemIP}:/opt/tomcat/webapps/student-reg-webapp.war
-                        ssh -o StrictHostKeyChecking=no ${tomcatserverSSHUserName}@${tomcatSystemIP} sudo systemctl start tomcat
-                        """
-                }
-            }
-        }
-
-        stage("Deploy War File To QA Server"){
-            
-            
-            when {
-                expression { env.BRANCH_NAME ==  "QA" }
-            }
-
-            steps {
-                sshagent(['TomcatServer_SSH_Credetails']) {
-                  sh """
-                    echo "Deploying to QA Server"
-                    """
-                }
-            }
-        }
-  
-       stage("Deploy War File To Prod Server"){
-             
-            when {
-                expression { env.BRANCH_NAME ==  "main" }
-            }
-            steps {
-              sshagent(['TomcatServer_SSH_Credetails']) {
-                sh """
-                  echo "Deploying to Prod Server"
-                    """
-              }
-            }
-        }
-
-    } 
-
-
-    post {
-        success {
-            slackSend channel: 'lic-app-team', color: "good", message: "Jenkins Job ${env.JOB_NAME} - ${env.BUILD_NUMBER} - Success . Please heck console output at ${env.BUILD_URL}"  
-        }
-       
-        failure {
-            
-            slackSend channel: 'lic-app-team', color: "danager", message: "Jenkins Job ${env.JOB_NAME} - ${env.BUILD_NUMBER} - Failed . Please Check console output at ${env.BUILD_URL}"  
-        }
-       
-        always {
-            cleanWs()
-        }
-    }
-
 }
